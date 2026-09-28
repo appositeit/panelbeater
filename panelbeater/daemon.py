@@ -40,6 +40,7 @@ from .protocol import (
     tcp_request,
 )
 from .protocol import OP_REGISTER, PORT_REQUEST
+from .colour import host_mode
 from .scanning import D4_PARAMS, describe, scan_params, scan_to_dir
 
 
@@ -75,7 +76,8 @@ def serve(cfg: Config, host: str, log=print) -> int:
         int(cfg.num("resolution", 300)), cfg.get("mode", "color"), log=log
     )
     simplex = cfg.flag("simplex")
-    log(f"scanning at {describe(params)}, {'simplex' if simplex else 'duplex'}")
+    log(f"scanning at {describe(params)}, {'simplex' if simplex else 'duplex'}"
+        f"{host_mode(cfg)}")
 
     reregister = threading.Event()
     busy = threading.Lock()

@@ -14,6 +14,7 @@ from . import output
 from .config import Config, config_paths, derive_host_id
 from .enrol import enrol
 from .protocol import discover, hw_status, local_ip_and_mac
+from .colour import host_mode
 from .scanning import describe, scan_params, scan_to_dir
 from .session import Session
 
@@ -136,7 +137,8 @@ def cmd_scan(args, cfg: Config) -> int:
     host = resolve_scanner(cfg, args.scanner)
     params = scan_params(int(cfg.num("resolution", 300)), cfg.get("mode", "color"))
     simplex = cfg.flag("simplex")
-    print(f"scanning at {describe(params)}, {'simplex' if simplex else 'duplex'}")
+    print(f"scanning at {describe(params)}, {'simplex' if simplex else 'duplex'}"
+        f"{host_mode(cfg)}")
     work = Path(tempfile.mkdtemp(prefix="panelbeater-"))
     try:
         n = scan_to_dir(

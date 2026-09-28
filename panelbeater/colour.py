@@ -82,6 +82,12 @@ def to_gray(path: str) -> str:
     return path
 
 
+def host_mode(cfg) -> str:
+    """', then <mode> on this host' for a mode the scanner does not do itself."""
+    mode = cfg.get("mode", "").strip().lower()
+    return f", then {mode} on this host" if mode in ("lineart", "auto") else ""
+
+
 def reduce_pages(
     paths: Sequence[str], mode: str, log: Callable[[str], None] = print
 ) -> list[str]:
