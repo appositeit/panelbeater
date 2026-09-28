@@ -4,6 +4,7 @@
 
     scan -> JPEGs in a work dir
          -> drop blank sides
+         -> reduce to black and white or gray (mode lineart or auto)
          -> assemble a PDF in the STAGING dir
          -> run the rename hook, if configured
          -> move into the output dir
@@ -24,7 +25,7 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Sequence
 
-from . import blank
+from . import blank, colour
 
 
 def _which(*names: str) -> str:
@@ -38,7 +39,7 @@ def _which(*names: str) -> str:
 def assemble_pdf(
     pages: Sequence[str], out: Path, log: Callable[[str], None] = print
 ) -> bool:
-    """Combine JPEGs into one PDF, using whatever the system has.
+    """Combine the sides into one PDF, using whatever the system has.
 
     Tried in order of how well each preserves the original JPEG data:
 
@@ -47,7 +48,7 @@ def assemble_pdf(
       convert   ImageMagick; may be blocked by a restrictive policy.xml
 
     Returns False if none are available, in which case the caller keeps the
-    JPEGs -- a scan is never discarded just because no PDF tool is installed.
+    images -- a scan is never discarded just because no PDF tool is installed.
     """
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -235,6 +236,8 @@ def finish(
         if kept:
             log(f"  blank removal: keeping {len(kept)} of {len(pages)} side(s)")
             pages = kept
+
+    pages = colour.reduce_pages(pages, cfg.get("mode"), log=log)
 
     staging = cfg.staging_dir
     staging.mkdir(parents=True, exist_ok=True)

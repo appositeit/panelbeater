@@ -50,9 +50,12 @@ def scan_params(
         resolution = 300
     mode = mode.strip().lower()
     if mode == "lineart":
-        # Composition 0 yields no image; this transport only carries JPEG.
-        log("lineart is not available over the network; scanning gray")
+        # Composition 0 yields no image; output.finish() thresholds a gray scan.
+        log("lineart: scanning gray, converting to black and white on this host")
         mode = "gray"
+    elif mode == "auto":
+        log("auto: scanning color, converting colourless sides to gray on this host")
+        mode = "color"
     if mode not in COMPOSITION:
         log(f"unknown mode {mode!r}; scanning color")
         mode = "color"
