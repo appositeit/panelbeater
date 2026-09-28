@@ -1,0 +1,40 @@
+[Unit]
+# System-wide variant, for a headless server nobody logs in to. The instance
+# name is the user the daemon runs as, so scans land in that user's files and
+# the config is read from that user's ~/.config first, then /etc/panelbeater:
+#
+#   sudo ./install.sh --system
+#   sudo systemctl enable --now panelbeater@alice
+#
+# Unlike the --user unit this needs no `loginctl enable-linger`, and it starts
+# at boot rather than at first login.
+Description=ScanSnap panel scanning for %i (keeps the touch panel enabled)
+Documentation=https://github.com/appositeit/panelbeater
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+ExecStart=@BIN@ serve
+# The panel goes dead within about a minute of nobody being registered, so a
+# crashed daemon means a scanner nobody can use. Always come back.
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Light hardening only. output_dir can be anywhere -- a home directory, /srv,
+# a NAS mount that paperless-ngx watches -- and hooks run inside the same
+# sandbox, so the filesystem is left writable apart from /usr, /boot and /etc.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target
