@@ -93,7 +93,9 @@ def assemble_pdf(
     return False
 
 
-def ocr_in_place(path: Path, log: Callable[[str], None] = print) -> None:
+def ocr_in_place(
+    path: Path, lang: str = "", log: Callable[[str], None] = print
+) -> None:
     """Add a text layer with ocrmypdf, if it is installed.
 
     Entirely optional. A failure leaves the original untouched -- OCR is a
@@ -103,10 +105,11 @@ def ocr_in_place(path: Path, log: Callable[[str], None] = print) -> None:
     if not cmd:
         return
     tmp = path.with_suffix(".ocr.pdf")
+    langs = ["-l", lang] if lang else []
     try:
         subprocess.run(
             [cmd, "--quiet", "--rotate-pages", "--deskew", "--skip-text",
-             str(path), str(tmp)],
+             *langs, str(path), str(tmp)],
             check=True, capture_output=True, timeout=900,
         )  # fmt: skip
         tmp.replace(path)
@@ -257,7 +260,7 @@ def finish(
         file_jpegs()
         return None
     log(f"  assembled {len(pages)} side(s) -> {doc.name}")
-    ocr_in_place(doc, log=log)
+    ocr_in_place(doc, cfg.get("ocr_lang").strip(), log=log)
 
     hook = cfg.get("hook").strip()
     if hook:
