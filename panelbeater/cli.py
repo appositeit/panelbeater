@@ -268,7 +268,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("config", help="show or create the configuration file")
     p.add_argument("--show", action="store_true", help="print the effective settings")
-    p.add_argument("--write", default="", help="path to write a starter config to")
+    p.add_argument("--write", nargs="?", const="", default="",
+                   help="write a starter config (default path, or the one given)")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_config)
 
