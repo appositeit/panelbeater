@@ -27,6 +27,11 @@ between 7.9 and 20.5, and greyer paper closes the gap. Counting the fraction of
 pixels that are actually ink removes the background term: a blank side measures
 exactly zero.
 
+Punch holes are the exception. The shadow inside a hole reads as ink, 1.4-1.9%
+of its block, which is more than the threshold and about what a pencil drawing
+scores, so no threshold separates them. The holes sit 14-20 mm in from the
+side of the scan, so the sides are skipped further than the top and bottom.
+
 Requires Pillow and numpy. Without them blank removal is skipped and every side
 is kept, which is the safe direction.
 """
@@ -41,7 +46,7 @@ from typing import Callable, Sequence
 # single character, while a 10x10 dust speck (0.48%) does not trip it.
 DEFAULT_THRESHOLD = 0.5
 DARK = 128  # a pixel this dark or darker is ink
-DPI = 300  # what the d4 parameter block is currently fixed at
+SIDE_MM = 22  # skipped at the left and right: past the punch holes
 
 
 def available() -> bool:
@@ -53,22 +58,24 @@ def available() -> bool:
     return True
 
 
-def max_block_ink(path: str, dark: int = DARK, dpi: int = DPI) -> float:
+def max_block_ink(path: str, dark: int = DARK) -> float:
     """Ink percentage of the densest half-inch block on the page."""
     import numpy as np
     from PIL import Image
 
     with Image.open(path) as im:
+        dpi = int(round(im.info.get("dpi", (300, 300))[0])) or 300
         a = np.asarray(im.convert("L"), dtype=np.uint8)
 
-    quarter = dpi // 4 // 8 * 8  # border to ignore, as sanei_magic does
+    quarter = dpi // 4 // 8 * 8  # top and bottom border to ignore, as sanei_magic does
+    side = round(SIDE_MM * dpi / 25.4)
     half = quarter * 2  # block edge: half an inch
     h, w = a.shape
-    yb, xb = (h - half) // half, (w - half) // half
+    yb, xb = (h - half) // half, (w - 2 * side) // half
     if yb < 1 or xb < 1:  # page smaller than one block: measure it whole
         return 100.0 * float((a < dark).mean())
 
-    core = a[quarter : quarter + yb * half, quarter : quarter + xb * half]
+    core = a[quarter : quarter + yb * half, side : side + xb * half]
     blocks = core.reshape(yb, half, xb, half)
     return 100.0 * float((blocks < dark).mean(axis=(1, 3)).max())
 
