@@ -24,7 +24,8 @@ platform and will probably work — reports welcome.
 - The Scan button on the panel starts a scan on your machine, over **Wi-Fi or
   USB**
 - Multi-sheet batches from the ADF, duplex or simplex; 150, 200 or 300 dpi,
-  colour or gray, over either transport
+  colour, gray or black and white, over either transport
+- `mode = auto`: scanned in colour, filed gray unless a side really has colour
 - Blank reverse sides dropped automatically
 - Combined into one PDF, with a text layer if `ocrmypdf` is installed
 - Filed into a directory you choose, with an optional rename hook
@@ -33,10 +34,12 @@ platform and will probably work — reports welcome.
 
 ## What does not
 
-- **Over the network, 300 dpi is the ceiling and there is no lineart.** The
-  scanner accepts 600 dpi but dropped the connection on two of three sheets,
-  and lineart produces no image at all, because that transport only carries
-  JPEG. Both work over USB. See `docs/PROTOCOL.md`.
+- **Over the network, 300 dpi is the ceiling and lineart is made on the
+  host.** The scanner accepts 600 dpi but dropped the connection on two of
+  three sheets, and lineart produces no image at all, because that transport
+  only carries JPEG. So `mode = lineart` scans gray and each side is
+  thresholded to black and white here, which needs Pillow and numpy. USB does
+  both in the scanner. See `docs/PROTOCOL.md`.
 - **Wi-Fi has to be configured on the panel itself.** The credentials are typed
   on the scanner and never cross the wire, so no host tool can do it.
 - **Which host the panel points at is chosen on the panel.** A host can add
@@ -62,6 +65,7 @@ optional and degrades to a clear message rather than a traceback:
 |---|---|---|
 | one PDF instead of loose JPEGs | `img2pdf`, or Pillow | you get the JPEGs |
 | dropping blank reverse sides | Pillow and numpy | every side is kept |
+| `mode = auto`, and lineart over the network | Pillow and numpy | sides are kept as scanned |
 | a searchable text layer | `ocrmypdf` | the PDF has no text layer |
 | scanning over USB | `pyusb`, Pillow, numpy | the network path still works |
 
@@ -125,7 +129,7 @@ interval = 15               # seconds between registrations; this is the keep-al
 dim_after = 0               # minutes idle before we stop registering; 0 = never
 dim_timer = 0               # scanner's own sleep timer, minutes; USB only
 resolution = 300            # 150, 200 or 300; USB also 600
-mode = color                # color or gray; USB also lineart
+mode = color                # color, gray, lineart, or auto: color or gray per side
 simplex = no                # yes drops the back of every sheet
 ```
 
@@ -206,7 +210,8 @@ registration concept, so it works on a scanner straight out of the box — no
 `panelbeater enrol`, and nothing to tap on the panel. If you just want the
 button to work, plug the cable in and set `transport = usb`.
 
-It also does 600 dpi and lineart, which the network path cannot:
+It also does 600 dpi, which the network path cannot, and lineart in the
+scanner rather than on the host:
 
 ```ini
 resolution = 600

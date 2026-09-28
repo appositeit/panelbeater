@@ -90,8 +90,10 @@ DEFAULTS: dict[str, str] = {
     # Seconds between re-arming the panel over USB; 0 disables. Cheap insurance
     # in case the panel loses the session.
     "rearm": "300",
-    # Network: 150, 200 or 300 dpi, color or gray (lineart scans gray).
-    # USB also does 600 and lineart.
+    # 150, 200 or 300 dpi; USB also does 600.
+    # color, gray, lineart or auto. auto scans colour and turns every side
+    # without colour gray. Over the network lineart scans gray and is
+    # thresholded on this host. Both need Pillow and numpy.
     "resolution": "300",
     "mode": "color",
     "simplex": "no",
