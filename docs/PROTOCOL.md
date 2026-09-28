@@ -279,6 +279,13 @@ a full log every `0x01` is followed by a successful scan, while every `0x10` is
 followed by a failed scan and a boot notice about 20 seconds later. Treating
 them as presses makes the scanner start jobs by itself.
 
+`0x11` was also seen as the scanner started a job of its own on a Cloud
+profile, 3 s before it refused registration `-4` for the length of that job.
+
+A `0x01` also arrives when a batch ends, within a second of `d6`, with nobody
+touching the panel — three batches out of three. A short cooldown after each
+scan absorbs it.
+
 **`GET_HW_STATUS`**, CDB `c2 00 00 00 00 00 00 00 30 00`, tunnelled as SCSI
 over the network:
 

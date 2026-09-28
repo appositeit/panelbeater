@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from .protocol import INTENT_CLAIM
+from .protocol import INTENT_CLAIM, explain_status
 from .session import Session
 
 
@@ -105,7 +105,7 @@ def enrol(
             writer = Session(host, borrowed)
             ok, why = writer.register(intent=INTENT_CLAIM, wait=30)
     if not ok:
-        log(f"  could not register to write the list: {why}")
+        log(f"  could not register to write the list: {why}{explain_status(why)}")
         return False
 
     try:
