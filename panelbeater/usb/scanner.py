@@ -71,7 +71,11 @@ class UsbScanner:
         self.dev = dev
         self.verbose = verbose
         self.resolution = resolution
-        self.mode = mode
+        mode = mode.strip().lower()
+        if mode not in COMPOSITION and mode != "auto":
+            print(f"  unknown mode {mode!r}; scanning color")
+        # auto scans colour; output.finish() turns sides without colour gray.
+        self.mode = mode if mode in COMPOSITION else "color"
         self.duplex = duplex
         self.width_px = 0
         self.last_fault = None
