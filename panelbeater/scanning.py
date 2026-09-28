@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from typing import Callable
 
-from .protocol import hw_status
+from .protocol import explain_status, hw_status
 from .session import Session
 
 # Captured verbatim: 300 dpi, A4. 0x012c twice is 300 dpi in each axis, and
@@ -202,9 +202,9 @@ def scan_to_dir(
     if skip_register:
         log("using the existing registration")
     else:
-        ok, why = s.register(on_wait=lambda: log("  scanner held by another host..."))
+        ok, why = s.register(on_wait=lambda: log("  scanner busy, waiting..."))
         if not ok:
-            log(f"  registration failed: {why}")
+            log(f"  registration failed: {why}{explain_status(why)}")
             return 0
         log("registered")
 

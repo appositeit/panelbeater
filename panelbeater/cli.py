@@ -88,6 +88,9 @@ def cmd_status(args, cfg: Config) -> int:
     print(f"output:    {cfg.output_dir}")
     print(f"staging:   {cfg.staging_dir}")
     print(f"hook:      {cfg.get('hook') or '(none)'}")
+    if usb_present():
+        print("usb:       cable attached -- the scanner refuses network "
+              "registration while it is")  # fmt: skip
     try:
         g = hw_status(host, mac)
         print(f"hopper:    {'paper loaded' if not (g[3] & 0x80) else 'empty'}")

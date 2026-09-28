@@ -64,6 +64,22 @@ def signed(v: int) -> int:
     return v - (1 << 32) if v > 0x7FFFFFFF else v
 
 
+STATUS_HINTS = {
+    -4: (
+        "the scanner is busy: a USB cable is attached, another computer holds "
+        "it, or it is running a job of its own such as a ScanSnap Cloud "
+        "profile. Unplug the cable, or wait for the job to finish (or cancel "
+        "it on the panel) and try again"
+    ),
+}
+
+
+def explain_status(status: int) -> str:
+    """' -- why', for a status worth explaining, else ''."""
+    hint = STATUS_HINTS.get(status)
+    return f" -- {hint}" if hint else ""
+
+
 def local_ip_and_mac(target: str = "8.8.8.8") -> tuple[str, bytes, str]:
     """(ip, mac, ifname) for the interface that would reach `target`.
 

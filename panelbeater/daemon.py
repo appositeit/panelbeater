@@ -32,6 +32,7 @@ from .protocol import (
     OP_BUTTON_NOTICE,
     PORT_BUTTON_NOTIFY,
     PORT_HOST_NOTIFY,
+    explain_status,
     hw_status,
     local_ip_and_mac,
     parse_frame,
@@ -174,6 +175,9 @@ def serve(cfg: Config, host: str, log=print) -> int:
                     reregister.set()
                 elif op == OP_BUTTON_NOTICE:
                     do_scan("UDP notice")
+                elif op == 0x11:
+                    log(f"[{stamp()}] ignored: op=0x11 is the scanner starting "
+                        f"a job of its own (a cloud profile?), not a press")  # fmt: skip
                 else:
                     log(f"[{stamp()}] ignored: op=0x{op:02x} is not a button press")
 
@@ -206,6 +210,7 @@ def serve(cfg: Config, host: str, log=print) -> int:
 
     intent_note = [False]
     refusals = [0]
+    last_refusal: list[int | None] = [None]
     was_pressed = False
     try:
         while True:
@@ -282,11 +287,18 @@ def serve(cfg: Config, host: str, log=print) -> int:
                         intent_note[0] = True
                         log(f"[{stamp()}] claimed the scanner for this host")
                 if status == 0:
-                    refusals[0] = 0  # quiet: this happens every interval
+                    if refusals[0]:
+                        log(f"[{stamp()}] registration accepted again after "
+                            f"{refusals[0]} refusal(s)")  # fmt: skip
+                    refusals[0] = 0
+                    last_refusal[0] = None
                     registered[0] = True
                 elif status is not None:
-                    log(f"[{stamp()}] registration refused (status {status})")
                     refusals[0] += 1
+                    if status != last_refusal[0]:
+                        last_refusal[0] = status
+                        log(f"[{stamp()}] registration refused (status {status})"
+                            f"{explain_status(status)}")  # fmt: skip
                     # -4 means another host holds the scanner. The commonest
                     # cause by far is a USB cable: the scanner gives USB
                     # precedence whenever one is connected and refuses network
