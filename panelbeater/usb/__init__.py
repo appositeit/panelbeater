@@ -21,10 +21,25 @@ errors, and inferring "finished" from an exit code.
   daemon.py     arm the panel, watch the button, scan
 """
 
-from .panel import Panel, PanelError
-from .transport import Ix1500, ScannerAbsent, ScannerBusy
-
 __all__ = ["Ix1500", "Panel", "PanelError", "ScannerAbsent", "ScannerBusy"]
+
+
+def __getattr__(name: str):
+    """Import the pyusb-backed classes on first use, not at package import.
+
+    `transport = auto` imports this package just to call available(), so an
+    eager `import usb.core` here crashed the daemon on every network-only
+    machine without pyusb -- the path the README promises is stdlib-only.
+    """
+    if name in ("Panel", "PanelError"):
+        from . import panel
+
+        return getattr(panel, name)
+    if name in ("Ix1500", "ScannerAbsent", "ScannerBusy"):
+        from . import transport
+
+        return getattr(transport, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def available() -> bool:
