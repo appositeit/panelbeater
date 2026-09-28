@@ -14,15 +14,60 @@ from typing import Callable
 from .protocol import hw_status
 from .session import Session
 
-# Captured verbatim: 300 dpi, A4. 0x012c twice is 300 dpi in each axis, and
-# 0x28d0 x 0x45a4 is the page in 1/1200 inch. The block is not fully decoded,
-# so resolution is not adjustable over the network yet -- what looks like
-# padding holds geometry, and changing it blindly makes d4 fail.
+# Captured from ScanSnap Home (300 dpi colour). scan_params() patches the known
+# fields; the rest is replayed as is. See docs/PROTOCOL.md.
 D4_PARAMS = bytes.fromhex(
     "00030101d000c1808080908080008001000000000000000000000000000000300010012c012c0581"
     "0000000028d0000045a4000000000000000000000000000000000000000000000000000000000000"
 )
 assert len(D4_PARAMS) == 80, "d4 parameter block must be exactly 80 bytes"
+
+D4_XRES = 0x22  # u16 BE, dots per inch
+D4_YRES = 0x24  # u16 BE
+D4_COMPOSITION = 0x26  # as in SET WINDOW over USB
+
+# Verified on hardware. 600 dpi dropped the connection on two of three sheets.
+NETWORK_RESOLUTIONS = (150, 200, 300)
+COMPOSITION = {"color": 0x05, "gray": 0x02}
+
+
+def d4_params(overrides: dict[int, bytes] | None = None) -> bytes:
+    """The captured d4 block with raw offset -> bytes replaced, for experiments."""
+    buf = bytearray(D4_PARAMS)
+    for off, val in (overrides or {}).items():
+        if off < 0 or off + len(val) > len(buf):
+            raise ValueError(f"d4 override at {off:#x} runs off the 80-byte block")
+        buf[off : off + len(val)] = val
+    return bytes(buf)
+
+
+def scan_params(
+    resolution: int = 300, mode: str = "color", log: Callable[[str], None] = print
+) -> bytes:
+    """The d4 block for a verified resolution and mode; anything else falls back."""
+    if resolution not in NETWORK_RESOLUTIONS:
+        log(f"{resolution} dpi is not available over the network; using 300")
+        resolution = 300
+    mode = mode.strip().lower()
+    if mode == "lineart":
+        # Composition 0 yields no image; this transport only carries JPEG.
+        log("lineart is not available over the network; scanning gray")
+        mode = "gray"
+    if mode not in COMPOSITION:
+        log(f"unknown mode {mode!r}; scanning color")
+        mode = "color"
+    dpi = resolution.to_bytes(2, "big")
+    return d4_params(
+        {D4_XRES: dpi, D4_YRES: dpi, D4_COMPOSITION: bytes([COMPOSITION[mode]])}
+    )
+
+
+def describe(params: bytes) -> str:
+    """'300 dpi color', read back out of a d4 block."""
+    dpi = int.from_bytes(params[D4_XRES : D4_XRES + 2], "big")
+    names = {v: k for k, v in COMPOSITION.items()}
+    comp = params[D4_COMPOSITION]
+    return f"{dpi} dpi {names.get(comp, f'composition {comp:#04x}')}"
 
 
 def as_jpeg(raw: bytes) -> bytes | None:
@@ -74,17 +119,20 @@ def scan_batch(
     out_prefix: str,
     max_sheets: int = 100,
     log: Callable[[str], None] = print,
+    params: bytes = D4_PARAMS,
+    simplex: bool = False,
 ) -> int:
     """Scan every sheet in the hopper. Returns the number of sides written.
 
     The caller must already have registered, opened a session, selected a
-    profile and called connect().
+    profile and called connect(). The scanner always sends both sides; with
+    `simplex` the back is read and dropped.
     """
     setup = [
         ("d5 (01)", [0xD5, 0, 0, 0x01, 0x08, 0x08], 8, bytes(8)),
         ("d8 begin", [0xD8, 0, 0, 0, 0, 0], 0, b""),
         ("e9 config", [0xE9, 0, 0, 0, 0, 0, 0, 0x20, 0, 0], 0, b""),
-        ("d4 params", [0xD4, 0, 0, 0, 0x50, 0], 0, D4_PARAMS),
+        ("d4 params", [0xD4, 0, 0, 0, 0x50, 0], 0, params),
         ("d5 (00)", [0xD5, 0, 0, 0x00, 0x08, 0x08], 8, bytes(8)),
     ]
     for label, cdb, rl, out in setup:
@@ -123,7 +171,14 @@ def scan_batch(
                     quiet=20,
                 )
                 jpg = as_jpeg(raw)
-                if jpg and len(jpg) > 10000:
+                if jpg and not jpg.endswith(b"\xff\xd9"):
+                    # A side over the 0x300000-byte read would stop there.
+                    log(f"  sheet {sheet} {tag:<6} image has no end marker; "
+                        f"it is probably cut off")  # fmt: skip
+                if jpg and len(jpg) > 10000 and side and simplex:
+                    log(f"  sheet {sheet} back   dropped (simplex)")
+                    got += 1
+                elif jpg and len(jpg) > 10000:
                     pages += 1
                     path = f"{out_prefix}-{pages:04d}.jpg"
                     with open(path, "wb") as fh:
@@ -196,6 +251,8 @@ def scan_to_dir(
     max_sheets: int = 100,
     skip_register: bool = False,
     log: Callable[[str], None] = print,
+    params: bytes = D4_PARAMS,
+    simplex: bool = False,
 ) -> int:
     """Full scan: register, select a profile, check for paper, scan."""
     s = Session(host, host_id)
@@ -226,6 +283,8 @@ def scan_to_dir(
 
     s.connect()
     try:
-        return scan_batch(s, out_prefix, max_sheets, log=log)
+        return scan_batch(
+            s, out_prefix, max_sheets, log=log, params=params, simplex=simplex
+        )
     finally:
         s.close()

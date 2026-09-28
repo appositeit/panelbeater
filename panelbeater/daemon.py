@@ -40,7 +40,7 @@ from .protocol import (
     tcp_request,
 )
 from .protocol import OP_REGISTER, PORT_REQUEST
-from .scanning import scan_to_dir
+from .scanning import D4_PARAMS, describe, scan_params, scan_to_dir
 
 
 def stamp() -> str:
@@ -71,6 +71,11 @@ def serve(cfg: Config, host: str, log=print) -> int:
 
     interval = cfg.num("interval", 15.0)
     poll_ms = cfg.num("poll", 200.0)
+    params = scan_params(
+        int(cfg.num("resolution", 300)), cfg.get("mode", "color"), log=log
+    )
+    simplex = cfg.flag("simplex")
+    log(f"scanning at {describe(params)}, {'simplex' if simplex else 'duplex'}")
 
     reregister = threading.Event()
     busy = threading.Lock()
@@ -109,7 +114,7 @@ def serve(cfg: Config, host: str, log=print) -> int:
             detail = "" if paper is None else f" (paper_loaded={paper})"
             log(f"[{stamp()}] SCAN BUTTON PRESSED via {source}{detail}")
             last_active[0] = time.monotonic()
-            pages, work = capture(cfg, host, host_id, log=log)
+            pages, work = capture(cfg, host, host_id, log=log, params=params)
         finally:
             last_done[0] = time.monotonic()
             busy.release()
@@ -345,7 +350,7 @@ def cleanup(work: Path) -> None:
 
 
 def capture(
-    cfg: Config, host: str, host_id: str, log=print
+    cfg: Config, host: str, host_id: str, log=print, params: bytes = D4_PARAMS
 ) -> tuple[list[str], Path | None]:
     """The scanner-bound half: pull the pages off the ADF and stop.
 
@@ -362,6 +367,8 @@ def capture(
             max_sheets=int(cfg.num("max_sheets", 100)),
             skip_register=True,  # the daemon already holds the registration
             log=log,
+            params=params,
+            simplex=cfg.flag("simplex"),
         )
     except OSError as exc:
         log(f"  scan failed: {exc}")
