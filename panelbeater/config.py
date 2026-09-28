@@ -90,8 +90,8 @@ DEFAULTS: dict[str, str] = {
     # Seconds between re-arming the panel over USB; 0 disables. Cheap insurance
     # in case the panel loses the session.
     "rearm": "300",
-    # USB only: the network path is fixed at 300 dpi colour because its
-    # parameter block is not fully decoded.
+    # Network: 150, 200 or 300 dpi, color or gray (lineart scans gray).
+    # USB also does 600 and lineart.
     "resolution": "300",
     "mode": "color",
     "simplex": "no",

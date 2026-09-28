@@ -23,8 +23,8 @@ platform and will probably work — reports welcome.
 
 - The Scan button on the panel starts a scan on your machine, over **Wi-Fi or
   USB**
-- Multi-sheet batches from the ADF, duplex; 300 dpi colour over the
-  network, adjustable over USB
+- Multi-sheet batches from the ADF, duplex or simplex; 150, 200 or 300 dpi,
+  colour or gray, over either transport
 - Blank reverse sides dropped automatically
 - Combined into one PDF, with a text layer if `ocrmypdf` is installed
 - Filed into a directory you choose, with an optional rename hook
@@ -33,9 +33,10 @@ platform and will probably work — reports welcome.
 
 ## What does not
 
-- **Resolution is fixed at 300 dpi colour over the network.** The parameter
-  block that sets it is only partly decoded; see `docs/PROTOCOL.md`. Over USB
-  it is adjustable.
+- **Over the network, 300 dpi is the ceiling and there is no lineart.** The
+  scanner accepts 600 dpi but dropped the connection on two of three sheets,
+  and lineart produces no image at all, because that transport only carries
+  JPEG. Both work over USB. See `docs/PROTOCOL.md`.
 - **Wi-Fi has to be configured on the panel itself.** The credentials are typed
   on the scanner and never cross the wire, so no host tool can do it.
 - **Which host the panel points at is chosen on the panel.** A host can add
@@ -123,7 +124,12 @@ max_sheets = 100
 interval = 15               # seconds between registrations; this is the keep-alive
 dim_after = 0               # minutes idle before we stop registering; 0 = never
 dim_timer = 0               # scanner's own sleep timer, minutes; USB only
+resolution = 300            # 150, 200 or 300; USB also 600
+mode = color                # color or gray; USB also lineart
+simplex = no                # yes drops the back of every sheet
 ```
+
+The scan settings come from here, not from the profile chosen on the panel.
 
 Setting `scanner` to a fixed IP is worth doing: the iX1500 answers unicast
 discovery but ignores broadcasts, so `auto` has to sweep the subnet.
@@ -200,12 +206,11 @@ registration concept, so it works on a scanner straight out of the box — no
 `panelbeater enrol`, and nothing to tap on the panel. If you just want the
 button to work, plug the cable in and set `transport = usb`.
 
-It also does resolution and colour mode, which the network path cannot:
+It also does 600 dpi and lineart, which the network path cannot:
 
 ```ini
-resolution = 300       # or 150, 600
-mode = color           # or gray, lineart
-simplex = no
+resolution = 600
+mode = lineart
 ```
 
 Known rough edge: each side is read until a 42 MB safety ceiling rather than

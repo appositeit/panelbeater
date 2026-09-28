@@ -359,14 +359,65 @@ Sense is still worth reading, to catch real faults:
 | 03 80 07 | double feed |
 | 03 80 08 | no paper picked |
 
-### Resolution
+### The `d4` parameter block
 
-The `d4` parameter block is 80 bytes and only partly decoded. The bytes that
-look like padding hold the resolution and page geometry: `012c 012c` is 300 dpi
-in each axis and `28d0 x 45a4` is the page in 1/1200 inch. Changing them
-blindly makes `d4` fail, so the network path is currently fixed at 300 dpi
-colour. Decoding this block properly is the most useful outstanding piece of
-work.
+80 bytes. The captured block is 300 dpi colour JPEG over the whole scan area:
+
+```
+00: 00 03 01 01 d0 00 c1 80 80 80 90 80 80 00 80 01
+10: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 30
+20: 00 10 01 2c 01 2c 05 81 00 00 00 00 28 d0 00 00
+30: 45 a4 00 00 ...                        (zeros to 0x4f)
+```
+
+| offset | size | meaning | how established |
+|---|---|---|---|
+| 0x22 | u16 BE | X resolution, dpi | scanned at 150, 200, 300, 600 |
+| 0x24 | u16 BE | Y resolution, dpi | as above |
+| 0x26 | u8 | image composition, as in `SET WINDOW`: `05` colour, `02` gray | scanned both |
+| 0x27 | u8 | `81`, JPEG — the `fujitsu` backend's `COMP_JPEG` | inferred, not varied |
+| 0x2a | u32 BE | scan width, 1/1200 inch (`28d0`, 8.7") | inferred, not varied |
+| 0x2e | u32 BE | maximum length, 1/1200 inch (`45a4`, 14.86") | inferred, not varied |
+
+`0x1e` holds `0x0030`, the length of everything from `0x20` on, which makes the
+second half look like a window descriptor behind a header. Inferred. Bytes
+0x00–0x1d and 0x20–0x21 are not decoded and are replayed as captured.
+
+**`d4` returns 0 for anything.** Every variant tried was accepted, including
+one that then produced no image, so the status says nothing; only the image
+does. What came back:
+
+| asked for | result |
+|---|---|
+| 150, 200, 300 dpi, colour or gray | exactly that: JFIF density, width `10448 × dpi / 1200` rounded down to a multiple of 8, one or three components. Trimmed to the page. |
+| 600 dpi colour | one sheet complete, 5224 × 8912, 3.1 MB a side, 23 s. Another sheet, twice: the front took 60–107 s and the scanner then closed the connection. Never trimmed — always the full 14.86", padded grey. |
+| composition `00` (lineart) | the front read returns 34 bytes after 40 s and the scanner drops the connection. This transport carries JPEG only; black and white has to be made on the host. |
+
+An earlier version of this document said changing these fields "blindly makes
+`d4` fail". The resolution and composition fields do not; the geometry was not
+tried.
+
+### After each side
+
+The REQUEST SENSE information field, bytes 3–6, is the **residue**: the
+`0x300000` the read asked for, minus what was sent (`0x28877c` after a
+489,604-byte side). A side bigger than 3 MiB would presumably take several
+reads — untested; nothing at 300 dpi comes near it.
+
+The 32-byte read that follows each side (`28 00 80 …`) describes the image.
+Values from one side at 200 dpi, all matching the JPEG; the names are inferred
+from them:
+
+```
+0x00  u32  width in pixels, as sent            1736
+0x04  u32  maximum length in pixels            2968
+0x08  u32  width again                         1736
+0x0c  u32  length in pixels, as sent           2456
+0x10  u32  X dpi                                200
+0x14  u16  Y dpi                                200
+0x18  u16  width before rounding               1741
+0x1c  u16  length before rounding              2458
+```
 
 ### The network transport allow-lists SCSI
 
