@@ -117,6 +117,7 @@ output_dir = ~/Documents/Scans
 staging_dir =               # default: a .staging dir inside output_dir
 hook =                      # optional rename program; see hooks/README.md
 pdf = yes
+ocr_lang =                  # e.g. deu+eng; blank means English only
 blank_removal = yes
 blank_threshold = 0.5
 max_sheets = 100
