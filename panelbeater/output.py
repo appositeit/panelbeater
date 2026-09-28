@@ -247,7 +247,7 @@ def finish(
     def file_jpegs() -> Path | None:
         out = None
         for i, p in enumerate(pages, 1):
-            name = f"scan-{stamp}-{i:03d}.jpg"
+            name = f"scan-{stamp}-{i:03d}{Path(p).suffix}"
             out = deliver(Path(p), cfg.output_dir, log=log, name=name)
         return out
 
