@@ -98,6 +98,23 @@ systemctl --user enable --now panelbeater
 loginctl enable-linger $USER    # so it runs when you are not logged in
 ```
 
+### On a headless server
+
+A scanner on Wi-Fi does not need to be near the machine that serves it — a
+Raspberry Pi or a home server nobody logs in to is a natural fit. For that,
+install system-wide with a system unit instead of a `--user` one:
+
+```sh
+sudo ./install.sh --system     # /usr/local, plus /etc/systemd/system/panelbeater@.service
+panelbeater config --write     # then config, discover, enrol as above, as that user
+sudo systemctl enable --now panelbeater@$USER
+```
+
+The instance name is the user the daemon runs as, so scans are owned by that
+user and the config comes from their `~/.config/panelbeater` (or
+`/etc/panelbeater/config`). It starts at boot and needs no `enable-linger`.
+`sudo ./install.sh --system --uninstall` removes it.
+
 `panelbeater status` is the thing to run when something is wrong: it prints the
 config it loaded, whether the scanner is reachable, whether there is paper, and
 every host the scanner knows about with the selected one marked.

@@ -12,29 +12,59 @@
 #
 #   ./install.sh                    into ~/.local, plus a systemd --user unit
 #   ./install.sh --prefix /usr/local    system-wide (run as root; no unit)
-#   ./install.sh --uninstall
+#   ./install.sh --system           into /usr/local, plus a system unit
+#                                   panelbeater@.service for a headless server
+#                                   (run as root; enable it per user)
+#   ./install.sh --uninstall        add --system to undo a --system install
 #
 set -eu
 
-PREFIX="${PREFIX:-$HOME/.local}"
+PREFIX="${PREFIX:-}"
 UNIT=1
 UNINSTALL=0
+SYSTEM=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --prefix) PREFIX="$2"; shift 2 ;;
         --prefix=*) PREFIX="${1#*=}"; shift ;;
         --no-unit) UNIT=0; shift ;;
+        --system) SYSTEM=1; shift ;;
         --uninstall) UNINSTALL=1; shift ;;
-        -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
+
+if [ "$SYSTEM" = 1 ]; then
+    PREFIX="${PREFIX:-/usr/local}"
+    if [ "$(id -u)" != 0 ]; then
+        echo "--system writes to $PREFIX and /etc/systemd/system; run it as root" >&2
+        exit 1
+    fi
+else
+    PREFIX="${PREFIX:-$HOME/.local}"
+fi
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LIBDIR="$PREFIX/lib/panelbeater"
 BIN="$PREFIX/bin/panelbeater"
 UNITDIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+SYSUNITDIR=/etc/systemd/system
+
+if [ "$UNINSTALL" = 1 ] && [ "$SYSTEM" = 1 ]; then
+    if command -v systemctl >/dev/null 2>&1 && [ -f "$SYSUNITDIR/panelbeater@.service" ]; then
+        for u in $(systemctl list-units --all --plain --no-legend 'panelbeater@*' 2>/dev/null | awk '{print $1}'); do
+            systemctl disable --now "$u" 2>/dev/null || true
+        done
+        rm -f "$SYSUNITDIR/panelbeater@.service"
+        systemctl daemon-reload 2>/dev/null || true
+    fi
+    rm -f "$BIN"
+    rm -rf "$LIBDIR" "$PREFIX/share/panelbeater"
+    echo "removed. Config and scans were left alone."
+    exit 0
+fi
 
 if [ "$UNINSTALL" = 1 ]; then
     if command -v systemctl >/dev/null 2>&1 && [ -f "$UNITDIR/panelbeater.service" ]; then
@@ -80,6 +110,28 @@ exec python3 -suP -c 'import sys; sys.path.insert(0, "$LIBDIR"); from panelbeate
 EOF
 chmod +x "$BIN"
 echo "  $BIN"
+
+if [ "$SYSTEM" = 1 ]; then
+    if [ "$UNIT" = 1 ] && command -v systemctl >/dev/null 2>&1; then
+        sed "s|@BIN@|$BIN|" "$HERE/systemd/panelbeater@.service.in" > "$SYSUNITDIR/panelbeater@.service"
+        systemctl daemon-reload 2>/dev/null || true
+        echo "  $SYSUNITDIR/panelbeater@.service"
+    fi
+    cat <<EOF
+
+Next, as the user who should own the scans (not root):
+  panelbeater config --write          create ~/.config/panelbeater/config
+  panelbeater discover                find the scanner
+  panelbeater enrol                   put this machine in its host list
+  panelbeater status                  check what the scanner thinks
+
+Then, on the scanner's panel, tap the host name at the top and pick this
+machine. Finally, as root:
+
+  systemctl enable --now panelbeater@<user>
+EOF
+    exit 0
+fi
 
 if [ "$UNIT" = 1 ] && command -v systemctl >/dev/null 2>&1 && [ -n "${HOME:-}" ]; then
     mkdir -p "$UNITDIR"
