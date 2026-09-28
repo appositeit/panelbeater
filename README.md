@@ -260,6 +260,13 @@ host list, take ownership of the panel, and scan. That is the vendor's design,
 not a choice made here. Treat the scanner as you would a network printer and
 keep it off untrusted networks.
 
+**It also hands out ScanSnap Cloud credentials.** If the scanner has cloud
+profiles, the host-list document carries their OAuth access and refresh tokens
+in clear text, and reading that document needs no registration at all — one
+unauthenticated request to port 53219 returns them. panelbeater never prints
+or logs them, but anyone else on the network can read them. If that matters,
+keep cloud profiles off a scanner on a shared network.
+
 ## Licence
 
 GPL-2.0-or-later. See `LICENSE`.

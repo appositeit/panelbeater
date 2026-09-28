@@ -175,10 +175,10 @@ body:
 | subject | contents |
 |---|---|
 | `0x01` | `conn_user`: the host list, the profiles, and which host is selected |
-| `0x02` | the session: which user the panel is acting for |
+| `0x02` | the session: which user the panel is acting for. Read, it returns that user's profiles |
 | `0x04` | a session document with a different user id (role not established) |
 | `0x06` | profile selection: `{"version":1,"prof_id":"..."}` |
-| `0x07` | read-only; contents not decoded |
+| `0x07` | read-only; a u32, 0 in every read so far |
 | `0x0c` | binary host_id ↔ name binding (see below) |
 
 ### The length field means different things on each transport
@@ -263,6 +263,19 @@ do it for them.
 Profiles carry a 32-hex-character `user_id`, and the session document (subject
 0x02) must quote it as `current_user_id`. It is **per-scanner** — read it from
 `profiles[*].user_id` rather than hard-coding one.
+
+### Profiles
+
+Each entry in `profiles` is what the panel shows as one button. `prof_type` is
+0 for a computer profile and 2 for a ScanSnap Cloud one. `scan_info` carries
+the profile's settings: `resolution` (`auto`, `normal`, `fine`, `superfine`,
+`excellent`), `color_mode` (`auto`, `color`, `gray`, `monochrome`) and
+`paper_handling` (`single`, `both`). They are the host's to honour; the
+scanner scans with whatever `d4` says.
+
+**Cloud profiles carry credentials.** Their `scloud_info` holds the account's
+OAuth `access_token` and `refresh_token` in clear text, and the host list that
+contains them can be read without registering. Never log that document whole.
 
 ## Detecting a button press
 
