@@ -187,7 +187,9 @@ def run_hook(
     return path
 
 
-def deliver(path: Path, dest: Path, log: Callable[[str], None] = print) -> Path:
+def deliver(
+    path: Path, dest: Path, log: Callable[[str], None] = print, name: str = ""
+) -> Path:
     """Move the finished document into dest, atomically where possible.
 
     A plain rename within one filesystem is atomic, so a folder-watcher can
@@ -196,7 +198,7 @@ def deliver(path: Path, dest: Path, log: Callable[[str], None] = print) -> Path:
     final rename publishes it.
     """
     dest.mkdir(parents=True, exist_ok=True)
-    final = unique_path(dest / path.name)
+    final = unique_path(dest / (name or path.name))
     try:
         path.rename(final)
     except OSError:
@@ -239,17 +241,20 @@ def finish(
     staging = cfg.staging_dir
     staging.mkdir(parents=True, exist_ok=True)
 
-    if not cfg.flag("pdf"):
-        # No PDF wanted: file the JPEGs individually and stop.
+    def file_jpegs() -> Path | None:
         out = None
         for i, p in enumerate(pages, 1):
-            out = deliver(Path(p), cfg.output_dir, log=log)
+            name = f"scan-{stamp}-{i:03d}.jpg"
+            out = deliver(Path(p), cfg.output_dir, log=log, name=name)
         return out
+
+    if not cfg.flag("pdf"):
+        # No PDF wanted: file the JPEGs individually and stop.
+        return file_jpegs()
 
     doc = staging / f"scan-{stamp}.pdf"
     if not assemble_pdf(pages, doc, log=log):
-        for p in pages:
-            deliver(Path(p), cfg.output_dir, log=log)
+        file_jpegs()
         return None
     log(f"  assembled {len(pages)} side(s) -> {doc.name}")
     ocr_in_place(doc, log=log)
