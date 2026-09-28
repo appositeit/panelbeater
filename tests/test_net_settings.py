@@ -34,7 +34,8 @@ class FakeScanner:
 @pytest.mark.parametrize(
     "dpi, mode, xres, comp",
     [(150, "color", 150, 0x05), (200, "gray", 200, 0x02), (300, "color", 300, 0x05),
-     (600, "color", 300, 0x05), (300, "lineart", 300, 0x02)],  # fmt: skip
+     (600, "color", 300, 0x05), (300, "lineart", 300, 0x02),
+     (300, "auto", 300, 0x05)],  # fmt: skip
 )
 def test_d4_fields(dpi, mode, xres, comp):
     p = scan_params(dpi, mode, log=lambda m: None)
