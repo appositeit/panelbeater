@@ -23,8 +23,9 @@ platform and will probably work — reports welcome.
 
 - The Scan button on the panel starts a scan on your machine, over **Wi-Fi or
   USB**
-- Multi-sheet batches from the ADF, duplex; 300 dpi colour over the
-  network, adjustable over USB
+- Multi-sheet batches from the ADF, duplex or simplex; 150, 200 or 300 dpi,
+  colour, gray or black and white, over either transport
+- `mode = auto`: scanned in colour, filed gray unless a side really has colour
 - Blank reverse sides dropped automatically
 - Combined into one PDF, with a text layer if `ocrmypdf` is installed
 - Filed into a directory you choose, with an optional rename hook
@@ -33,9 +34,12 @@ platform and will probably work — reports welcome.
 
 ## What does not
 
-- **Resolution is fixed at 300 dpi colour over the network.** The parameter
-  block that sets it is only partly decoded; see `docs/PROTOCOL.md`. Over USB
-  it is adjustable.
+- **Over the network, 300 dpi is the ceiling and lineart is made on the
+  host.** The scanner accepts 600 dpi but dropped the connection on two of
+  three sheets, and lineart produces no image at all, because that transport
+  only carries JPEG. So `mode = lineart` scans gray and each side is
+  thresholded to black and white here, which needs Pillow and numpy. USB does
+  both in the scanner. See `docs/PROTOCOL.md`.
 - **Wi-Fi has to be configured on the panel itself.** The credentials are typed
   on the scanner and never cross the wire, so no host tool can do it.
 - **Which host the panel points at is chosen on the panel.** A host can add
@@ -61,6 +65,7 @@ optional and degrades to a clear message rather than a traceback:
 |---|---|---|
 | one PDF instead of loose JPEGs | `img2pdf`, or Pillow | you get the JPEGs |
 | dropping blank reverse sides | Pillow and numpy | every side is kept |
+| `mode = auto`, and lineart over the network | Pillow and numpy | sides are kept as scanned |
 | a searchable text layer | `ocrmypdf` | the PDF has no text layer |
 | scanning over USB | `pyusb`, Pillow, numpy | the network path still works |
 
@@ -123,7 +128,12 @@ max_sheets = 100
 interval = 15               # seconds between registrations; this is the keep-alive
 dim_after = 0               # minutes idle before we stop registering; 0 = never
 dim_timer = 0               # scanner's own sleep timer, minutes; USB only
+resolution = 300            # 150, 200 or 300; USB also 600
+mode = color                # color, gray, lineart, or auto: color or gray per side
+simplex = no                # yes drops the back of every sheet
 ```
+
+The scan settings come from here, not from the profile chosen on the panel.
 
 Setting `scanner` to a fixed IP is worth doing: the iX1500 answers unicast
 discovery but ignores broadcasts, so `auto` has to sweep the subnet.
@@ -200,12 +210,12 @@ registration concept, so it works on a scanner straight out of the box — no
 `panelbeater enrol`, and nothing to tap on the panel. If you just want the
 button to work, plug the cable in and set `transport = usb`.
 
-It also does resolution and colour mode, which the network path cannot:
+It also does 600 dpi, which the network path cannot, and lineart in the
+scanner rather than on the host:
 
 ```ini
-resolution = 300       # or 150, 600
-mode = color           # or gray, lineart
-simplex = no
+resolution = 600
+mode = lineart
 ```
 
 Known rough edge: each side is read until a 42 MB safety ceiling rather than
