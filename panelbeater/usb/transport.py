@@ -24,7 +24,7 @@ import time
 import usb.core
 import usb.util
 
-VID, PID = 0x04C5, 0x159F
+from .. import USB_PRODUCTS, USB_VENDOR as VID
 EP_OUT, EP_IN = 0x02, 0x81
 
 # Fujitsu USB transport constants (see SANE fujitsu backend, fujitsu.h)
@@ -66,12 +66,12 @@ def _busy_message() -> str:
             if open(f).read().strip() != f"{VID:04x}":
                 continue
             d = os.path.dirname(f)
-            if open(os.path.join(d, "idProduct")).read().strip() != f"{PID:04x}":
+            if int(open(os.path.join(d, "idProduct")).read(), 16) not in USB_PRODUCTS:
                 continue
             bus = int(open(os.path.join(d, "busnum")).read())
             dev = int(open(os.path.join(d, "devnum")).read())
             node = f"/dev/bus/usb/{bus:03d}/{dev:03d}"
-        except OSError:
+        except (OSError, ValueError):
             continue
 
     holder = ""
@@ -104,10 +104,13 @@ def _busy_message() -> str:
 class Ix1500:
     def __init__(self, timeout_ms: int = 3000):
         self.timeout = timeout_ms
-        self.dev = usb.core.find(idVendor=VID, idProduct=PID)
+        self.dev = usb.core.find(
+            idVendor=VID, custom_match=lambda d: d.idProduct in USB_PRODUCTS
+        )
         if self.dev is None:
+            ids = ", ".join(f"{VID:04x}:{p:04x}" for p in USB_PRODUCTS)
             raise ScannerAbsent(
-                f"ScanSnap {VID:04x}:{PID:04x} is not on the USB bus.\n"
+                f"No ScanSnap ({ids}) is on the USB bus.\n"
                 "  Is the ADF paper chute cover open? Closing it powers the\n"
                 "  scanner off and removes it from USB entirely."
             )

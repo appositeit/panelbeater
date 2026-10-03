@@ -1,4 +1,4 @@
-# Let a logged-in user open the ScanSnap iX1500 without root, which the USB
+# Let a logged-in user open a ScanSnap iX1500 or iX1600 without root, which the USB
 # transport needs. uaccess grants it to whoever is at the seat; the 0664 mode
 # is the fallback for systems without logind.
 #
@@ -7,3 +7,4 @@
 #
 # Not needed for the network transport.
 SUBSYSTEM=="usb", ATTR{idVendor}=="04c5", ATTR{idProduct}=="159f", MODE="0664", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04c5", ATTR{idProduct}=="1632", MODE="0664", TAG+="uaccess"

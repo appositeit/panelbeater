@@ -26,7 +26,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import night, output
+from . import USB_PRODUCTS, USB_VENDOR, night, output
 from .config import Config
 from .protocol import (
     OP_BUTTON_NOTICE,
@@ -55,11 +55,11 @@ def usb_cable_present() -> bool:
     for f in _P("/sys/bus/usb/devices").glob("*/idProduct"):
         try:
             if (
-                f.read_text().strip() == "159f"
-                and (f.parent / "idVendor").read_text().strip() == "04c5"
+                int(f.read_text(), 16) in USB_PRODUCTS
+                and int((f.parent / "idVendor").read_text(), 16) == USB_VENDOR
             ):
                 return True
-        except OSError:
+        except (OSError, ValueError):
             continue
     return False
 

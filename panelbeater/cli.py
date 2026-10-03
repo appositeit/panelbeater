@@ -10,7 +10,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import output
+from . import USB_PRODUCTS, USB_VENDOR, output
 from .config import Config, config_paths, derive_host_id
 from .enrol import enrol
 from .protocol import discover, hw_status, local_ip_and_mac
@@ -25,11 +25,11 @@ def usb_present() -> bool:
 
     for f in _P("/sys/bus/usb/devices").glob("*/idProduct"):
         try:
-            if f.read_text().strip() != "159f":
+            if int(f.read_text(), 16) not in USB_PRODUCTS:
                 continue
-            if (f.parent / "idVendor").read_text().strip() == "04c5":
+            if int((f.parent / "idVendor").read_text(), 16) == USB_VENDOR:
                 return True
-        except OSError:
+        except (OSError, ValueError):
             continue
     return False
 

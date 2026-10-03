@@ -10,8 +10,9 @@ server, another language. It is deliberately explicit about the things that
 cost days to find, because none of them are guessable and several look like
 padding.
 
-Device: ScanSnap iX1500, USB `04c5:159f`. Almost certainly applies to the
-iX1600/iX1400 and related models, which share the platform — untested.
+Device: ScanSnap iX1500, USB `04c5:159f`. The iX1600 (`04c5:1632`) speaks the
+same protocol; where it differs, this document says so. The iX1400 and related
+models share the platform — untested.
 
 - [The problem this solves](#the-problem-this-solves)
 - [Transport](#transport)
@@ -466,9 +467,12 @@ This is the same precedence ScanSnap Home shows: with a cable connected it uses
 USB even when the panel was configured for Wi-Fi, and a "Wi-Fi" capture made
 that way silently records a USB session.
 
+The iX1600 does not do this: with a cable attached it goes on accepting
+network registration, and a daemon registered over Wi-Fi stays usable.
+
 The practical consequence for an implementation is that transport is not a
 preference to be tuned, it is decided by whether a cable is plugged in. Detect
-the cable (sysfs `04c5:159f`) and use USB when it is present; a `-4` that never
+the cable (sysfs `04c5:159f`, or `04c5:1632` for an iX1600) and use USB when it is present; a `-4` that never
 clears usually means a cable, not a busy scanner.
 
 ## The USB transport

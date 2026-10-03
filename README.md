@@ -16,8 +16,9 @@ $ systemctl --user enable --now panelbeater
 
 Then press Scan. A searchable PDF appears in `~/Documents/Scans`.
 
-Tested on an iX1500 (`04c5:159f`) over Wi-Fi. The iX1600 and iX1400 share the
-platform and will probably work — reports welcome.
+Tested on an iX1500 (`04c5:159f`) over Wi-Fi, and on an iX1600 (`04c5:1632`)
+over Wi-Fi and USB. The iX1400 shares the platform and will probably work —
+reports welcome.
 
 ## What works
 
@@ -44,7 +45,9 @@ platform and will probably work — reports welcome.
 - **A USB cable disables the network path.** Not a preference: with a cable
   attached the scanner refuses network registration outright, so plugging one
   in switches you to USB whether you meant to or not — and takes idle dimming
-  with it, since that only exists on the network path.
+  with it, since that only exists on the network path. (iX1500. An iX1600
+  keeps accepting network registration with the cable attached; `auto` still
+  picks USB when the daemon starts with the cable in.)
 - **Over USB the panel dims by itself after ~13 minutes and only a touch wakes
   it.** There is no registration to relight it, and nothing the host can send
   will. After an idle spell the Scan button needs a tap on the screen first.
@@ -237,6 +240,7 @@ You will probably need a udev rule to open the device without root:
 ```
 # /etc/udev/rules.d/60-panelbeater.rules
 SUBSYSTEM=="usb", ATTR{idVendor}=="04c5", ATTR{idProduct}=="159f", MODE="0664", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04c5", ATTR{idProduct}=="1632", MODE="0664", TAG+="uaccess"
 ```
 
 ## For protocol implementers
