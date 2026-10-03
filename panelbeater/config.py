@@ -51,6 +51,9 @@ DEFAULTS: dict[str, str] = {
     "hook_timeout": "300",
     # Combine the scanned sides into one PDF. Without it you get JPEGs.
     "pdf": "yes",
+    # Languages for the ocrmypdf text layer, as tesseract codes joined by "+",
+    # e.g. "deu+eng". Blank leaves the choice to ocrmypdf (English).
+    "ocr_languages": "",
     # Duplex scanning one-sided paper yields a blank reverse for every sheet.
     "blank_removal": "yes",
     "blank_threshold": "0.5",
