@@ -26,6 +26,8 @@ platform and will probably work — reports welcome.
 - Multi-sheet batches from the ADF, duplex; 300 dpi colour over the
   network, adjustable over USB
 - Blank reverse sides dropped automatically
+- Optionally cropped to the sheet (`autocrop`), as ScanSnap Home does on the
+  computer; a crop within 4 mm of A4 is scaled to exactly A4
 - Combined into one PDF, with a text layer if `ocrmypdf` is installed
 - Filed into a directory you choose, with an optional rename hook
 - Enrolment: your machine appears on the panel by name, alongside any others
@@ -119,6 +121,7 @@ hook =                      # optional rename program; see hooks/README.md
 pdf = yes
 blank_removal = yes
 blank_threshold = 0.5
+autocrop = no               # crop each side to the sheet; needs pillow + numpy
 max_sheets = 100
 interval = 15               # seconds between registrations; this is the keep-alive
 dim_after = 0               # minutes idle before we stop registering; 0 = never

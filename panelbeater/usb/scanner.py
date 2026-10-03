@@ -270,7 +270,7 @@ class UsbScanner:
         img = 255 - arr[:last]
         out = io.BytesIO()
         Image.fromarray(img.squeeze() if ch == 1 else img).save(
-            out, "JPEG", quality=quality
+            out, "JPEG", quality=quality, dpi=(self.resolution, self.resolution)
         )
         return out.getvalue()
 

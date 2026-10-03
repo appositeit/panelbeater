@@ -24,7 +24,7 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Sequence
 
-from . import blank
+from . import blank, crop
 
 
 def _which(*names: str) -> str:
@@ -229,6 +229,11 @@ def finish(
     pages = list(pages)
     if not pages:
         return None
+
+    if cfg.flag("autocrop"):
+        # Before blank removal: the shadow along the trailing edge counts as
+        # ink, and kept a blank reverse side.
+        crop.crop_pages(pages, dpi=int(cfg.num("resolution", 300)), log=log)
 
     if cfg.flag("blank_removal"):
         kept = blank.keep_pages(pages, cfg.num("blank_threshold", 0.5), log=log)

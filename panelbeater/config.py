@@ -54,6 +54,9 @@ DEFAULTS: dict[str, str] = {
     # Duplex scanning one-sided paper yields a blank reverse for every sheet.
     "blank_removal": "yes",
     "blank_threshold": "0.5",
+    # Crop each side to the sheet. The scanner sends a fixed window wider and
+    # longer than the paper, with the grey backing around it.
+    "autocrop": "no",
     # Which of the scanner's profiles to scan with. Blank uses the first one.
     # `panelbeater status` lists them; the ids come from the scanner, not from here.
     "prof_id": "",
