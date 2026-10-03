@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import tempfile
 import time
@@ -49,13 +50,24 @@ def pick_transport(cfg: Config, override: str = "") -> str:
     return "network"
 
 
-def resolve_scanner(cfg: Config, override: str = "") -> str:
+def find_scanner(cfg: Config, override: str = "") -> str | None:
+    """The scanner's address: the configured one, else whatever answers
+    discovery. None when nothing answers -- the scanner is off, or elsewhere."""
     addr = (override or cfg.get("scanner", "auto")).strip()
     if addr and addr.lower() != "auto":
         return addr
-    print("looking for a scanner...", file=sys.stderr)
     found = discover()
     if not found:
+        return None
+    if len(found) > 1:
+        print(f"several scanners answered: {found}; using {found[0]}", file=sys.stderr)
+    return found[0]
+
+
+def resolve_scanner(cfg: Config, override: str = "") -> str:
+    print("looking for a scanner...", file=sys.stderr)
+    host = find_scanner(cfg, override)
+    if host is None:
         print(
             "no scanner found. Set `scanner = <ip>` in the config, or check the\n"
             "scanner is on the network (its panel shows the address under\n"
@@ -63,9 +75,52 @@ def resolve_scanner(cfg: Config, override: str = "") -> str:
             file=sys.stderr,
         )
         raise SystemExit(2)
-    if len(found) > 1:
-        print(f"several scanners answered: {found}; using {found[0]}", file=sys.stderr)
-    return found[0]
+    return host
+
+
+# serve: how long to wait between looks for a switched-off scanner. USB is
+# checked every second throughout (a sysfs read); only the network look, a
+# broadcast and a subnet sweep, backs off.
+WAIT_FIRST = 5.0
+WAIT_MAX = 60.0
+
+
+def wait_for_scanner(cfg: Config, args, sleep=time.sleep) -> tuple[str, str]:
+    """Block until a scanner is reachable. Returns (transport, host).
+
+    A scanner that is switched off is the normal state of a machine that has
+    one, not an error, so serve keeps looking rather than exiting for
+    systemd to restart it: a restart loop buries the journal in failures and
+    reports a config-error exit status for something that needs no fixing.
+    """
+    want = (args.transport or cfg.get("transport", "auto")).strip().lower()
+    waited = False
+    delay = WAIT_FIRST
+    while True:
+        usb_seen = usb_present()
+        if want != "network" and usb_seen:
+            # pick_transport also falls back to the network when pyusb is
+            # missing, and says so.
+            transport = pick_transport(cfg, args.transport)
+            if transport == "usb":
+                return transport, ""
+        if want != "usb":
+            host = find_scanner(cfg, args.scanner)
+            if host:
+                return "network", host
+        if not waited:
+            print(
+                "no scanner on USB or the network; waiting for one to be switched on",
+                file=sys.stderr, flush=True,
+            )  # fmt: skip
+            waited = True
+        # Look at USB each second, so a scanner switched on over the cable is
+        # picked up at once, then at the network again after `delay`.
+        for _ in range(int(delay)):
+            sleep(1)
+            if want != "network" and not usb_seen and usb_present():
+                break
+        delay = min(delay * 2, WAIT_MAX)
 
 
 def cmd_discover(args, cfg: Config) -> int:
@@ -179,17 +234,60 @@ def scan_over_usb(cfg: Config) -> int:
     return 0
 
 
+# A scanner that has just been switched on enumerates on USB several seconds
+# before it answers, so the first start can fail through no fault of the
+# config. Try a few times before giving up.
+USB_START_TRIES = 11
+USB_START_DELAY = 3.0
+USB_START_SETTLED = 10.0  # a run longer than this was not a failed start
+TRY_ENV = "PANELBEATER_START_TRY"
+
+
+def restart_process(sleep=time.sleep) -> None:
+    """Start over as a fresh process, keeping the PID. Returns only when it
+    cannot.
+
+    A failed USB start leaves this process unable to claim the scanner again:
+    every retry in-process fails with "claimed by another process", while a
+    new process claims it at once (seen on an iX1600, 2026-10-03). So the
+    retry replaces the process rather than looping inside it.
+    """
+    argv = getattr(sys, "orig_argv", None)
+    if not argv:
+        return
+    sleep(USB_START_DELAY)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.execv(sys.executable, argv)
+
+
 def cmd_serve(args, cfg: Config) -> int:
-    if pick_transport(cfg, args.transport) == "usb":
-        from .usb.daemon import serve as usb_serve
+    while True:
+        transport, host = wait_for_scanner(cfg, args)
+        if transport == "usb":
+            from .usb.daemon import serve as usb_serve
 
-        print("transport: usb")
-        return usb_serve(cfg)
-    from .daemon import serve
+            print("transport: usb", flush=True)
+            began = time.monotonic()
+            rc = usb_serve(cfg)
+            if rc == 75:  # off USB for good; choose the transport again
+                os.environ.pop(TRY_ENV, None)
+                restart_process(sleep=lambda _: None)
+                return rc
+            if rc == 1 and time.monotonic() - began < USB_START_SETTLED:
+                tries = int(os.environ.get(TRY_ENV, "0")) + 1
+                if tries < USB_START_TRIES:
+                    os.environ[TRY_ENV] = str(tries)
+                    print(
+                        f"scanner not ready; trying again ({tries}/{USB_START_TRIES - 1})",
+                        flush=True,
+                    )  # fmt: skip
+                    restart_process()
+            return rc
+        from .daemon import serve
 
-    print("transport: network")
-    host = resolve_scanner(cfg, args.scanner)
-    return serve(cfg, host)
+        print("transport: network", flush=True)
+        return serve(cfg, host)
 
 
 def cmd_config(args, cfg: Config) -> int:
