@@ -208,12 +208,14 @@ mode = color           # or gray, lineart
 simplex = no
 ```
 
-Known rough edge: each side is read until a 42 MB safety ceiling rather than
-stopping cleanly at the end of the page, so a scan moves about 42 MB per side
-over USB where the network path moves under 1 MB of ready-made JPEG. It works
-and it is not slow in practice — nine seconds for a duplex sheet — but the
-end-of-page detection is clearly not firing, and a page needing more than the
-ceiling would be truncated.
+Known rough edge: on an iX1500 each side is read until a 42 MB safety ceiling
+rather than stopping cleanly at the end of the page, so a scan moves about
+42 MB per side over USB where the network path moves under 1 MB of ready-made
+JPEG. It works and it is not slow in practice — nine seconds for a duplex
+sheet — but the end-of-page detection is clearly not firing there, and a page
+needing more than the ceiling would be truncated. On an iX1600 a side ends at
+its zero padding and is cut to the row count from the page-info read; see
+`docs/PROTOCOL.md`.
 
 Needs `pyusb`, plus Pillow and numpy to decode the image. Scanning is done
 in-process rather than by shelling out to `scanimage`, because handing the

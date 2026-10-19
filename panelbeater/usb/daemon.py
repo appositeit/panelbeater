@@ -34,7 +34,7 @@ from pathlib import Path
 from .. import output
 from ..config import Config
 from .panel import Panel
-from .scanner import UsbScanner
+from .scanner import UsbScanner, is_ix1600
 from .transport import Ix1500, ScannerAbsent, ScannerBusy
 
 SCAN_SW_MASK = 0x01
@@ -105,6 +105,26 @@ def set_sleep_timer(dev: Ix1500, minutes: int, log=print) -> int | None:
     return got
 
 
+KEEPALIVE_S = 10.0
+
+
+def open_session(dev: Ix1500, user_id: str) -> None:
+    """Write the host session document (panel subject 0x02).
+
+    ScanSnap Home rewrites it every 10s, the first time 12.6s after a batch
+    ends (iX1600 capture). Without it, an iX1600 panel reported the
+    connection lost about 10s after a batch and recovered ~30s later.
+    """
+    doc = {
+        "version": 1,
+        "function_level": 2,
+        "current_user_id": user_id,
+        "host_address": "",  # empty over USB; an IP over Wi-Fi
+        "host_port": 53220,
+    }
+    Panel(dev).transact(0x02, json.dumps(doc, separators=(",", ":")).encode(), write=True)
+
+
 def arm(dev: Ix1500, user_id: str, log=print) -> bool:
     """Put the panel into the state where the Scan button works."""
     try:
@@ -117,16 +137,7 @@ def arm(dev: Ix1500, user_id: str, log=print) -> bool:
         dev.command(
             bytes([0x1D, 0, 0, len(payload) >> 8, len(payload) & 0xFF, 0]), 0, payload
         )
-        doc = {
-            "version": 1,
-            "function_level": 2,
-            "current_user_id": user_id,
-            "host_address": "",  # empty over USB; an IP over Wi-Fi
-            "host_port": 53220,
-        }
-        Panel(dev).transact(
-            0x02, json.dumps(doc, separators=(",", ":")).encode(), write=True
-        )
+        open_session(dev, user_id)
         # Page 0x2c value 0x06 is the "ready" setting ScanSnap Home writes when
         # it attaches; 0x05 is what it writes when a batch finishes.
         out = bytes.fromhex("000000002c06060000000000")
@@ -192,6 +203,8 @@ def serve(cfg: Config, log=print) -> int:
     was_pressed = False
     lost = 0
     next_rearm = time.monotonic() + rearm if rearm else None
+    next_keepalive = time.monotonic() + KEEPALIVE_S
+    keepalive = is_ix1600(dev)
     try:
         while True:
             try:
@@ -238,12 +251,20 @@ def serve(cfg: Config, log=print) -> int:
                 log(f"[{stamp()}] SCAN BUTTON PRESSED (paper_loaded={paper})")
                 scan_once(cfg, dev, log=log)
                 was_pressed = False
+                next_keepalive = time.monotonic() + KEEPALIVE_S
                 continue
             was_pressed = pressed
 
             if next_rearm and time.monotonic() >= next_rearm:
                 arm(dev, user_id, log=log)
                 next_rearm = time.monotonic() + rearm
+                next_keepalive = time.monotonic() + KEEPALIVE_S
+            elif keepalive and time.monotonic() >= next_keepalive:
+                try:
+                    open_session(dev, user_id)
+                except Exception as exc:  # noqa: BLE001 -- the poll handles a lost device
+                    log(f"[{stamp()}] session keep-alive failed: {exc}")
+                next_keepalive = time.monotonic() + KEEPALIVE_S
             time.sleep(poll_ms / 1000.0)
     except KeyboardInterrupt:
         log("")
@@ -259,6 +280,7 @@ def scan_once(cfg: Config, dev: Ix1500, log=print) -> None:
     as the paper has gone through.
     """
     work = Path(tempfile.mkdtemp(prefix="panelbeater-"))
+    failed = False
     try:
         scanner = UsbScanner(
             dev,
@@ -271,10 +293,12 @@ def scan_once(cfg: Config, dev: Ix1500, log=print) -> None:
     except Exception as exc:  # noqa: BLE001
         log(f"[{stamp()}] scan failed: {exc}")
         sides = 0
-    finally:
-        # Always return the panel to the profile screen, even after a failure --
-        # a crashed scan is exactly when it would otherwise stick on
-        # "Scanning...".
+        failed = True
+    # Return the panel to the profile screen after a failure -- a crashed scan
+    # is exactly when it would otherwise stick on "Scanning...". On an iX1600
+    # not after a good batch: scan_batch has already ended it, and a second
+    # 31 02 after the last sheet fails and holds the panel on "Scanning...".
+    if failed or not is_ix1600(dev):
         finish_batch(dev, log=log)
 
     pages = sorted(str(p) for p in work.glob("page-*.jpg")) if sides else []

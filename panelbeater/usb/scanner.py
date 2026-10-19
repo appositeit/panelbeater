@@ -53,6 +53,15 @@ WINDOW_BACK = 0x80
 CHUNK = 0xFFEE  # what ScanSnap Home asks for per READ
 WINDOW_WIDTH_1200 = 10448  # scan width in 1/1200 inch, from SET WINDOW
 FILLER = 0x55  # what the scanner streams once the sheet has passed
+PADDING_CHUNKS = 5  # all-zero reads in a row (~40 rows) that end a side
+STATUS_BYTE = 9  # SCSI status in the 13-byte USB status reply
+CHECK_CONDITION = 0x02
+IX1600_PID = 0x1632  # the batch behaviour below was measured on this model only
+
+
+def is_ix1600(dev) -> bool:
+    """True if `dev` (an Ix1500 transport) is an iX1600. False if it can't tell."""
+    return getattr(getattr(dev, "dev", None), "idProduct", None) == IX1600_PID
 
 # The hand-typed MODE SELECT pages, gamma tables and SET WINDOW descriptor that
 # used to live here have been removed on purpose. Every one of them was
@@ -69,6 +78,7 @@ class UsbScanner:
     def __init__(self, dev, resolution: int = 300, mode: str = "color",
                  duplex: bool = True, verbose: bool = False):  # fmt: skip
         self.dev = dev
+        self.ix1600 = is_ix1600(dev)
         self.verbose = verbose
         self.resolution = resolution
         self.mode = mode
@@ -152,17 +162,33 @@ class UsbScanner:
         """Feed a sheet and start scanning it.
 
         Returns None on success, or the ASCQ of the fault that stopped it.
-        Checks the hopper BEFORE feeding: afterwards "hopper empty" just means
-        that was the last sheet, and treating it as failure breaks single-sheet
-        loads. Nothing is sent between the feed and SCAN -- the gap in the
+
+        Other models check the hopper BEFORE feeding: afterwards "hopper
+        empty" just means that was the last sheet, and treating it as failure
+        breaks single-sheet loads.
+
+        An iX1600 is NOT asked. It pulls sheets in ahead of the host: in a
+        7-sheet batch it read empty after sheet 2, and pages 3 to 7 were still
+        in the scanner. The end of the batch is OBJECT POSITION itself failing
+        with hopper empty (key 3 / ASC 0x80 / ASCQ 0x03), as in ScanSnap
+        Home's capture of the same batch.
+
+        Nothing else is sent between the feed and SCAN -- the gap in the
         capture is OBJECT POSITION blocking while the sheet feeds, and slipping
-        a REQUEST SENSE in there earns a command-sequence error.
+        a REQUEST SENSE in there earns a command-sequence error. On an iX1600
+        sense is read only when the feed reports CHECK CONDITION, and then
+        SCAN is not sent.
         """
-        g, _ = self.dev.hw_status(0x30)
-        if len(g) > 3 and (g[3] & 0x80):
-            self.last_fault = 0x03
-            return 0x03
-        self._cmd([0x31, 0x01, 0, 0, 0, 0, 0, 0, 0, 0])  # OBJECT POSITION feed
+        if not self.ix1600:
+            g, _ = self.dev.hw_status(0x30)
+            if len(g) > 3 and (g[3] & 0x80):
+                self.last_fault = 0x03
+                return 0x03
+        _, status = self._cmd([0x31, 0x01, 0, 0, 0, 0, 0, 0, 0, 0])  # OBJECT POSITION feed
+        if self.ix1600 and len(status) > STATUS_BYTE and status[STATUS_BYTE] == CHECK_CONDITION:
+            key, asc, ascq, _, _ = self.sense()
+            self.last_fault = ascq if key == 0x03 and asc == 0x80 else 0xFF
+            return self.last_fault
         windows = (
             bytes([WINDOW_FRONT, WINDOW_BACK]) if self.duplex else bytes([WINDOW_FRONT])
         )
@@ -193,6 +219,7 @@ class UsbScanner:
         chunk = {WINDOW_FRONT: 0xFFEE, WINDOW_BACK: 0x010000}
         buf = {w: bytearray() for w in windows}
         done = {w: False for w in windows}
+        padding = {w: 0 for w in windows}
         cap = self.max_bytes()
         deadline = time.monotonic() + timeout_s
 
@@ -228,6 +255,15 @@ class UsbScanner:
                     # full 42MB ceiling instead, so allow a few stray bytes.
                     if len(data) > 4096 and data.count(FILLER) >= len(data) * 0.95:
                         done[w] = True
+                    # The iX1600 pads with 0x00 (white) instead, and never
+                    # sends EOM. One white chunk can be the bright line at the
+                    # leading edge, so it takes a run of them.
+                    if self.ix1600 and len(data) > 4096 and data.count(0) >= len(data) * 0.99:
+                        padding[w] += 1
+                        if padding[w] >= PADDING_CHUNKS:
+                            done[w] = True
+                    elif self.ix1600:
+                        padding[w] = 0
                 if eom or not data:
                     done[w] = True
                 elif len(buf[w]) > cap:
@@ -236,7 +272,27 @@ class UsbScanner:
                     print(f"    window {w:#04x}: hit the {cap:,}B ceiling, stopping",
                           flush=True)  # fmt: skip
                     done[w] = True
+        for w in windows if self.ix1600 else ():
+            rows = self.page_rows(w)
+            stride = self.width_px * CHANNELS[self.mode]
+            if rows and rows * stride < len(buf[w]):
+                del buf[w][rows * stride :]
         return {w: bytes(b) for w, b in buf.items()}
+
+    def page_rows(self, window: int) -> int:
+        """Rows the scanner says the side has, from the page-info read.
+
+        READ with data type 0x80, 32 bytes: width in pixels at 0, window rows
+        at 4, image rows at 12 -- e.g. 2612, 4457, 3697 for A4 at 300dpi.
+        ScanSnap Home reads it after every side. 0 if the reply is unusable.
+        """
+        try:
+            info, _ = self._cmd([0x28, 0, 0x80, 0, 0, window, 0, 0, 0x20, 0], 0x20)
+        except Exception:  # noqa: BLE001
+            return 0
+        if len(info) < 16 or int.from_bytes(info[0:4], "big") != self.width_px:
+            return 0
+        return int.from_bytes(info[12:16], "big")
 
     def to_jpeg(self, raw: bytes, quality: int = 90) -> bytes | None:
         """Raw scanner pixels -> JPEG.
@@ -274,13 +330,43 @@ class UsbScanner:
         )
         return out.getvalue()
 
+    @staticmethod
+    def mode_2c(value: int):
+        """(label, cdb, payload) for MODE SELECT page 0x2c -- the panel state.
+
+        Values seen from ScanSnap Home: 06 attached, 04 batch starting,
+        05 batch finished, 07 after 05 at the end of a batch.
+        """
+        out = bytes([0, 0, 0, 0, 0x2C, 0x06, value, 0, 0, 0, 0, 0])
+        return (f"mode 2c {value:02x}", [0x15, 0x10, 0, 0, len(out), 0], out)
+
     def finish(self) -> None:
-        self._cmd([0x31, 0x02, 0, 0, 0, 0, 0, 0, 0, 0])
-        out = bytes.fromhex("000000002c06050000000000")
-        self._cmd([0x15, 0x10, 0, 0, len(out), 0], 0, out)
+        """Return the panel to ready.
+
+        A batch that ran out of paper ends, in ScanSnap Home's capture of a
+        7-sheet iX1600 batch, with a feed that fails hopper empty, then page
+        2c set to 05 and then 07 -- and NO 31 02. Sending 31 02 there fails
+        hopper empty too, and the panel sat on "Scanning..." for ~25s and then
+        flashed an ADF error. Any other ending keeps 31 02 + 05, as before.
+        """
+        if self.ix1600 and self.last_fault == 0x03:
+            steps = (self.mode_2c(0x05), self.mode_2c(0x07))
+        else:
+            steps = (("31 02", [0x31, 0x02, 0, 0, 0, 0, 0, 0, 0, 0], None), self.mode_2c(0x05))
+        for label, cdb, payload in steps:
+            _, status = self._cmd(cdb, 0, payload)
+            if len(status) > STATUS_BYTE and status[STATUS_BYTE] == CHECK_CONDITION:
+                key, asc, ascq, _, _ = self.sense()
+                print(f"  batch end {label}: sense {key:x}/{asc:02x}/{ascq:02x}")
 
     def scan_batch(self, out_prefix: str, max_sheets: int = 100) -> int:
         """Scan until the feeder empties. Returns the number of sides written."""
+        # ScanSnap Home tells the panel a batch is starting (06, then 04) as
+        # soon as the press is seen. Without it the panel stayed on
+        # "Scanning..." for ~20s after the last sheet.
+        if self.ix1600:
+            for _, cdb, payload in (self.mode_2c(0x06), self.mode_2c(0x04)):
+                self._cmd(cdb, 0, payload)
         self.setup()
         pages = 0
         try:

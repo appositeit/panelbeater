@@ -501,9 +501,56 @@ Other things worth knowing:
 * Inserting a `REQUEST SENSE` between the feed and `SCAN` causes a
   command-sequence error.
 * Image data is **inverted**, and the tail is padded with `0x55`. Width is
-  `10448 * resolution / 1200` pixels.
+  `10448 * resolution / 1200` pixels. An iX1600 pads with `0x00` (white)
+  instead, and in uncompressed mode never sets EOM, so a side ends at a run
+  of all-zero reads.
+* After each side, `READ` with data type `0x80` (`28 00 80 …`, 16 or 32
+  bytes) returns the page geometry as big-endian u32s: width in pixels at 0,
+  window rows at 4, **image rows at 12** (e.g. 2612, 4457, 3697 for A4 at
+  300 dpi). ScanSnap Home reads it, and `0x81` (8 bytes), after every side.
+  Cutting the side to that row count removes the padding exactly.
 * The vendor commands `d4`, `d5` and `e0` are **network only**; over USB they
   return Overflow or time out.
+
+### Batches over USB
+
+Taken from a USB capture of ScanSnap Home scanning a 7-sheet duplex batch on
+an iX1600, and confirmed against the hardware.
+
+**The hopper sensor does not end a batch.** The iX1600 pulls sheets in ahead
+of the host and keeps their images: `GET_HW_STATUS` byte 3 bit 0x80 read
+empty after sheet 2 of 7, and sheets 3 to 7 were still there to be read. No
+other status byte differed before the last sheet. Asking the sensor before
+each feed filed 2 pages of 7.
+
+**The end is the feed itself.** ScanSnap Home repeats, per sheet,
+`SET WINDOW`, `OBJECT POSITION 31 01`, `SCAN`, the reads, `28 00 80` /
+`28 00 81` and `f1 09`. After the last sheet, `31 01` returns CHECK CONDITION
+with sense `3/80/03` (hopper empty). That is the clean end, not a fault.
+
+**Panel state is MODE SELECT page `0x2c`, byte 6.** ScanSnap Home writes:
+
+| value | when |
+|---|---|
+| `06` | on attaching, and again when a press is seen |
+| `04` | straight after `06`, before the batch starts |
+| `05` | after the feed that failed hopper empty |
+| `07` | straight after `05` |
+
+It does **not** send `31 02` at the end of such a batch. Sent there, `31 02`
+fails `3/80/03` as well, and the panel then stays on "Scanning…" for about
+25 s, flashes an ADF error and returns to ready. Without `04` at the start the
+panel also lingers on "Scanning…" after the last sheet.
+
+**The session is kept alive every 10 s.** ScanSnap Home rewrites the subject
+`0x02` session document every 10 s, the first time 12.6 s after a batch ends.
+A host that writes it only every few minutes sees the iX1600 panel report the
+connection lost about 10 s after a batch, for about 30 s.
+
+All of this is applied to the iX1600 only (`04c5:1632`). Other models keep
+the hopper-sensor check before each feed, `31 02` + `05` at the end, and the
+session write on the `rearm` interval, because none of it has been measured on
+them.
 
 The document channel over USB is `SEND DIAGNOSTIC` with a 16-byte
 space-padded name `"SETUP PROF INFO "`, then a 16-byte operation header, then
